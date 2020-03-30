@@ -1,11 +1,14 @@
-# %% ------ IMPORTS
+# %% ------------ IMPORTS
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sb
 from sklearn.impute import KNNImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix
 
-# %% ------ GENERAL PRE-PROCESSING
+# %% ------------ GENERAL PRE-PROCESSING
 # Read data from CSV dataset
 df = pd.read_csv("weatherAUS.csv")
 
@@ -31,7 +34,7 @@ df_encoded = pd.get_dummies(df, prefix_sep="_",
                             columns=categorical_features)
 # print(df_encoded.columns)
 
-# %% --- INITIAL VISUALIZATION
+# %% ------------ INITIAL VISUALIZATION
 # Display correlation matrix of features
 sb.set(font_scale=0.75)
 sb.heatmap(df.corr(), annot=True)
@@ -44,7 +47,7 @@ for col, values in df.items():
         plt.title(col)
         plt.show()
 
-# %% ----- SPECIFIC PRE-PROCESSING
+# %% ------------ SPECIFIC PRE-PROCESSING
 
 # Split dataset into a number of unique locations
 df_sydney = df_encoded[df_encoded['Location'] == 'Sydney'].reset_index(drop=True)
@@ -76,7 +79,7 @@ for i in range(len(dfs_by_location)):
 # %% ------------ TODO: FEATURE SELECTION
 
 # %% ------------ MODEL DEVELOPMENT
-
-
-
-
+rf_classifier = RandomForestClassifier()
+rf_classifier.fit(dfs_by_location[0][0], dfs_by_location[0][1])
+print(rf_classifier.feature_importances_)
+# rf_prediction = rf_classifier.predict()
