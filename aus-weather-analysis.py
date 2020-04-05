@@ -10,14 +10,14 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
-from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score
+from sklearn.metrics import confusion_matrix, roc_curve, roc_auc_score
 
 
 # %% ------------ FUNCTION DEFINITIONS
 
-def preprocess_location(location_df):
+def preprocess_location(location_df, class_balancing_type, feature_selection):
     # Split location dataframes into test/training sets based on a percentage
-    train, test = np.split(location_df, ([int(0.8 * location_df.shape[0])]))
+    train, test = np.split(location_df, ([int(0.3 * location_df.shape[0])]))
 
     # Split test set by features and class to prepare for prediction and performance metrics
     test_class = test['RainTomorrow']
@@ -32,15 +32,22 @@ def preprocess_location(location_df):
     train_class = train['RainTomorrow']
     train_features = train.drop('RainTomorrow', axis=1)
 
-    # TODO: CLASS BALANCING (under-sampling)
-    # SMOTE over-sampling for 'RainTomorrow' class = 1 to balance classes in training set
-    sm = SMOTE()
-    train_features, train_class = sm.fit_resample(train_features, train_class)
+    if class_balancing_type == 'undersampling':
+        # Random under-sampling for 'RainTomorrow' class = 1 to balance classes in training set
+        rand_undersampler = RandomUnderSampler()
+        train_features, train_class = rand_undersampler.fit_resample(train_features, train_class)
+
+    if class_balancing_type == 'oversampling':
+        # SMOTE over-sampling for 'RainTomorrow' class = 1 to balance classes in training set
+        smote_oversampler = SMOTE()
+        train_features, train_class = smote_oversampler.fit_resample(train_features, train_class)
+
+    #if feature_selection:
 
     return train_features, train_class, test_features, test_class
 
 
-def plot_confusion_matrix(cnf_matrix):
+def plot_confusion_matrix(cnf_matrix, location, model_type):
     class_names = [0, 1]
     # Configure plot and settings
     fig, ax = plt.subplots()
@@ -51,14 +58,39 @@ def plot_confusion_matrix(cnf_matrix):
     sb.heatmap(pd.DataFrame(cnf_matrix), annot=True, cmap="YlGnBu", fmt='g')
     ax.xaxis.set_label_position("top")
     plt.tight_layout()
-    plt.title('Confusion Matrix', y=1.1)
+    plt.title((location + " " + model_type), y=1.1)
     plt.ylabel('Actual')
     plt.xlabel('Predicted')
     plt.show()
 
 
-def plot_roc_curve(roc):
-    return
+def plot_roc_curve(actual, pred_rf, pred_lr, pred_knn, pred_svm):
+    fpr_rf, tpr_rf, thresholds_rf = roc_curve(actual, pred_rf)
+    fpr_lr, tpr_lr, thresholds_lr = roc_curve(actual, pred_lr)
+    fpr_knn, tpr_knn, thresholds_knn = roc_curve(actual, pred_knn)
+    fpr_svm, tpr_svm, thresholds_svm = roc_curve(actual, pred_svm)
+    
+    plt.plot(fpr_rf, tpr_rf, 'r-', label='RF')
+    plt.plot(fpr_lr, tpr_lr, 'b-', label='LR')
+    plt.plot(fpr_knn, tpr_knn, 'g-', label='KNN')
+    plt.plot(fpr_svm, tpr_svm, 'c-', label='SVM')
+    plt.plot([0, 1], [0, 1], 'k-', label='random')
+    plt.plot([0, 0, 1, 1], [0, 1, 1, 1], 'k-', label='perfect')
+    plt.legend()
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.show()
+
+
+def print_auc(location, actual, pred_rf, pred_lr, pred_knn, pred_svm):
+    auc_rf = roc_auc_score(actual, pred_rf)
+    auc_lr = roc_auc_score(actual, pred_lr)
+    auc_knn = roc_auc_score(actual, pred_knn)
+    auc_svm = roc_auc_score(actual, pred_svm)
+    print(location, 'AUC RF = ', auc_rf)
+    print(location, 'AUC LR = ', auc_lr)
+    print(location, 'AUC KNN = ', auc_knn)
+    print(location, 'AUC SVM = ', auc_svm, '\n')
 
 
 def print_metrics(location, model_type, cnf_matrix):
@@ -89,7 +121,7 @@ df.drop(features_to_drop, axis=1, inplace=True)
 df['RainToday'].replace(to_replace=['Yes', 'No'], value=['1', '0'], inplace=True)
 df['RainTomorrow'].replace(to_replace=['Yes', 'No'], value=['1', '0'], inplace=True)
 
-# Change remaining 'object' datatypes to numeric
+# Change remaining 'object' data-types to numeric
 df['RainToday'] = pd.to_numeric(df['RainToday'])
 df['RainTomorrow'] = pd.to_numeric(df['RainTomorrow'])
 
@@ -123,104 +155,191 @@ df_brisbane = df_encoded[df_encoded['Location'] == 'Brisbane'].drop(['Location']
 
 # %% ------------ LOCATION-BASED DATASET PRE-PROCESSING
 
-df_sydney_train_features, df_sydney_train_class, \
-    df_sydney_test_features, df_sydney_test_class = preprocess_location(df_sydney)
-df_perth_train_features, df_perth_train_class, \
-    df_perth_test_features, df_perth_test_class = preprocess_location(df_perth)
-df_canberra_train_features, df_canberra_train_class, \
-    df_canberra_test_features, df_canberra_test_class = preprocess_location(df_canberra)
-df_adelaide_train_features, df_adelaide_train_class, \
-    df_adelaide_test_features, df_adelaide_test_class = preprocess_location(df_adelaide)
-df_brisbane_train_features, df_brisbane_train_class, \
-    df_brisbane_test_features, df_brisbane_test_class = preprocess_location(df_brisbane)
+df_sydney_train_features, df_sydney_train_class, df_sydney_test_features, \
+    df_sydney_test_class = preprocess_location(df_sydney, class_balancing_type='oversampling', feature_selection=True)
+df_perth_train_features, df_perth_train_class, df_perth_test_features, \
+    df_perth_test_class = preprocess_location(df_perth, class_balancing_type='oversampling', feature_selection=True)
+df_canberra_train_features, df_canberra_train_class, df_canberra_test_features, \
+    df_canberra_test_class = preprocess_location(df_canberra, class_balancing_type='oversampling', feature_selection=True)
+df_adelaide_train_features, df_adelaide_train_class, df_adelaide_test_features, \
+    df_adelaide_test_class = preprocess_location(df_adelaide, class_balancing_type='oversampling', feature_selection=True)
+df_brisbane_train_features, df_brisbane_train_class, df_brisbane_test_features, \
+    df_brisbane_test_class = preprocess_location(df_brisbane, class_balancing_type='oversampling', feature_selection=True)
 
 # %% ------------ TODO: FEATURE SELECTION
 
 
-# %% ------------ RANDOM FOREST MODEL DEVELOPMENT
+# %% ------------ RANDOM FOREST MODEL AND METRICS
 
 rf_sydney = RandomForestClassifier()
 rf_sydney.fit(df_sydney_train_features, df_sydney_train_class)
 df_sydney_test_pred_rf = rf_sydney.predict(df_sydney_test_features)
 
+cm = confusion_matrix(y_pred=df_sydney_test_pred_rf, y_true=df_sydney_test_class)
+plot_confusion_matrix(cm, location='Sydney', model_type='random forest')
+
 rf_perth = RandomForestClassifier()
 rf_perth.fit(df_perth_train_features, df_perth_train_class)
 df_perth_test_pred_rf = rf_perth.predict(df_perth_test_features)
+
+cm = confusion_matrix(y_pred=df_perth_test_pred_rf, y_true=df_perth_test_class)
+plot_confusion_matrix(cm, location='Perth', model_type='random forest')
 
 rf_canberra = RandomForestClassifier()
 rf_canberra.fit(df_canberra_train_features, df_canberra_train_class)
 df_canberra_test_pred_rf = rf_canberra.predict(df_canberra_test_features)
 
+cm = confusion_matrix(y_pred=df_canberra_test_pred_rf, y_true=df_canberra_test_class)
+plot_confusion_matrix(cm, location='Canberra', model_type='random forest')
+
 rf_adelaide = RandomForestClassifier()
 rf_adelaide.fit(df_adelaide_train_features, df_adelaide_train_class)
 df_adelaide_test_pred_rf = rf_adelaide.predict(df_adelaide_test_features)
+
+cm = confusion_matrix(y_pred=df_adelaide_test_pred_rf, y_true=df_adelaide_test_class)
+plot_confusion_matrix(cm, location='Adelaide', model_type='random forest')
 
 rf_brisbane = RandomForestClassifier()
 rf_brisbane.fit(df_brisbane_train_features, df_brisbane_train_class)
 df_brisbane_test_pred_rf = rf_brisbane.predict(df_brisbane_test_features)
 
-# %% ------------ LINEAR REGRESSION MODEL DEVELOPMENT
+cm = confusion_matrix(y_pred=df_brisbane_test_pred_rf, y_true=df_brisbane_test_class)
+plot_confusion_matrix(cm, location='Brisbane', model_type='random forest')
 
-lr_sydney = LogisticRegression()
+# %% ------------ LINEAR REGRESSION MODEL AND METRICS
+
+lr_sydney = LogisticRegression(max_iter=5000)
 lr_sydney.fit(df_sydney_train_features, df_sydney_train_class)
 df_sydney_test_pred_lr = lr_sydney.predict(df_sydney_test_features)
 
-lr_perth = LogisticRegression()
+cm = confusion_matrix(y_pred=df_sydney_test_pred_lr, y_true=df_sydney_test_class)
+plot_confusion_matrix(cm, location='Sydney', model_type='Logistic Regression')
+
+lr_perth = LogisticRegression(max_iter=5000)
 lr_perth.fit(df_perth_train_features, df_perth_train_class)
 df_perth_test_pred_lr = lr_perth.predict(df_perth_test_features)
 
-lr_canberra = LogisticRegression()
+cm = confusion_matrix(y_pred=df_perth_test_pred_lr, y_true=df_perth_test_class)
+plot_confusion_matrix(cm, location='Perth', model_type='Logistic Regression')
+
+lr_canberra = LogisticRegression(max_iter=5000)
 lr_canberra.fit(df_canberra_train_features, df_canberra_train_class)
 df_canberra_test_pred_lr = lr_canberra.predict(df_canberra_test_features)
 
-lr_adelaide = LogisticRegression()
+cm = confusion_matrix(y_pred=df_canberra_test_pred_lr, y_true=df_canberra_test_class)
+plot_confusion_matrix(cm, location='Canberra', model_type='Logistic Regression')
+
+lr_adelaide = LogisticRegression(max_iter=5000)
 lr_adelaide.fit(df_adelaide_train_features, df_adelaide_train_class)
 df_adelaide_test_pred_lr = lr_adelaide.predict(df_adelaide_test_features)
 
-lr_brisbane = LogisticRegression()
+cm = confusion_matrix(y_pred=df_adelaide_test_pred_lr, y_true=df_adelaide_test_class)
+plot_confusion_matrix(cm, location='Adelaide', model_type='Logistic Regression')
+
+lr_brisbane = LogisticRegression(max_iter=5000)
 lr_brisbane.fit(df_brisbane_train_features, df_brisbane_train_class)
 df_brisbane_test_pred_lr = lr_brisbane.predict(df_brisbane_test_features)
 
-# %% ------------ k-NN LAZY LEARNING MODEL DEVELOPMENT
+cm = confusion_matrix(y_pred=df_brisbane_test_pred_lr, y_true=df_brisbane_test_class)
+plot_confusion_matrix(cm, location='Brisbane', model_type='Logistic Regression')
+
+# %% ------------ k-NN LAZY LEARNING MODEL AND METRICS
 
 knn_sydney = KNeighborsClassifier()
 knn_sydney.fit(df_sydney_train_features, df_sydney_train_class)
 df_sydney_test_pred_knn = knn_sydney.predict(df_sydney_test_features)
 
+cm = confusion_matrix(y_pred=df_sydney_test_pred_knn, y_true=df_sydney_test_class)
+plot_confusion_matrix(cm, location='Sydney', model_type='k-NN Classifier')
+
 knn_perth = KNeighborsClassifier()
 knn_perth.fit(df_perth_train_features, df_perth_train_class)
 df_perth_test_pred_knn = knn_perth.predict(df_perth_test_features)
+
+cm = confusion_matrix(y_pred=df_perth_test_pred_knn, y_true=df_perth_test_class)
+plot_confusion_matrix(cm, location='Perth', model_type='k-NN Classifier')
 
 knn_canberra = KNeighborsClassifier()
 knn_canberra.fit(df_canberra_train_features, df_canberra_train_class)
 df_canberra_test_pred_knn = knn_canberra.predict(df_canberra_test_features)
 
+cm = confusion_matrix(y_pred=df_canberra_test_pred_knn, y_true=df_canberra_test_class)
+plot_confusion_matrix(cm, location='Canberra', model_type='k-NN Classifier')
+
 knn_adelaide = KNeighborsClassifier()
 knn_adelaide.fit(df_adelaide_train_features, df_adelaide_train_class)
 df_adelaide_test_pred_knn = knn_adelaide.predict(df_adelaide_test_features)
+
+cm = confusion_matrix(y_pred=df_adelaide_test_pred_knn, y_true=df_adelaide_test_class)
+plot_confusion_matrix(cm, location='Adelaide', model_type='k-NN Classifier')
 
 knn_brisbane = KNeighborsClassifier()
 knn_brisbane.fit(df_brisbane_train_features, df_brisbane_train_class)
 df_brisbane_test_pred_knn = knn_brisbane.predict(df_brisbane_test_features)
 
-# %% ------------ SUPPORT VECTOR CLASSIFIER MODEL DEVELOPMENT
+cm = confusion_matrix(y_pred=df_brisbane_test_pred_knn, y_true=df_brisbane_test_class)
+plot_confusion_matrix(cm, location='Brisbane', model_type='k-NN Classifier')
 
-svm_sydney = SVC()
+# %% ------------ SUPPORT VECTOR CLASSIFIER MODEL AND METRICS
+
+svm_sydney = SVC(max_iter=5000)
 svm_sydney.fit(df_sydney_train_features, df_sydney_train_class)
 df_sydney_test_pred_svm = svm_sydney.predict(df_sydney_test_features)
 
-svm_perth = SVC()
+cm = confusion_matrix(y_pred=df_sydney_test_pred_svm, y_true=df_sydney_test_class)
+plot_confusion_matrix(cm, location='Sydney', model_type='Support Vector Machine')
+
+svm_perth = SVC(max_iter=5000)
 svm_perth.fit(df_perth_train_features, df_perth_train_class)
 df_perth_test_pred_svm = svm_perth.predict(df_perth_test_features)
 
-svm_canberra = SVC()
+cm = confusion_matrix(y_pred=df_perth_test_pred_svm, y_true=df_perth_test_class)
+plot_confusion_matrix(cm, location='Perth', model_type='Support Vector Machine')
+
+svm_canberra = SVC(max_iter=5000)
 svm_canberra.fit(df_canberra_train_features, df_canberra_train_class)
 df_canberra_test_pred_svm = svm_canberra.predict(df_canberra_test_features)
 
-svm_adelaide = SVC()
+cm = confusion_matrix(y_pred=df_canberra_test_pred_svm, y_true=df_canberra_test_class)
+plot_confusion_matrix(cm, location='Canberra', model_type='Support Vector Machine')
+
+svm_adelaide = SVC(max_iter=5000)
 svm_adelaide.fit(df_adelaide_train_features, df_adelaide_train_class)
 df_adelaide_test_pred_svm = svm_adelaide.predict(df_adelaide_test_features)
 
-svm_brisbane = SVC()
+cm = confusion_matrix(y_pred=df_adelaide_test_pred_svm, y_true=df_adelaide_test_class)
+plot_confusion_matrix(cm, location='Adelaide', model_type='Support Vector Machine')
+
+svm_brisbane = SVC(max_iter=5000)
 svm_brisbane.fit(df_brisbane_train_features, df_brisbane_train_class)
 df_brisbane_test_pred_svm = svm_brisbane.predict(df_brisbane_test_features)
+
+cm = confusion_matrix(y_pred=df_brisbane_test_pred_svm, y_true=df_brisbane_test_class)
+plot_confusion_matrix(cm, location='Brisbane', model_type='Support Vector Machine')
+
+# %% ------------ PLOT/PRINT ALL LOCATION-BASED ROC CURVES AND AUC
+
+plot_roc_curve(df_sydney_test_class, df_sydney_test_pred_rf, df_sydney_test_pred_lr,
+               df_sydney_test_pred_knn, df_sydney_test_pred_svm)
+print_auc('Sydney', df_sydney_test_class, df_sydney_test_pred_rf, df_sydney_test_pred_lr,
+          df_sydney_test_pred_knn, df_sydney_test_pred_svm)
+
+plot_roc_curve(df_perth_test_class, df_perth_test_pred_rf, df_perth_test_pred_lr,
+               df_perth_test_pred_knn, df_perth_test_pred_svm)
+print_auc('Perth', df_perth_test_class, df_perth_test_pred_rf, df_perth_test_pred_lr,
+          df_perth_test_pred_knn, df_perth_test_pred_svm)
+
+plot_roc_curve(df_canberra_test_class, df_canberra_test_pred_rf, df_canberra_test_pred_lr,
+               df_canberra_test_pred_knn, df_canberra_test_pred_svm)
+print_auc('Canberra', df_canberra_test_class, df_canberra_test_pred_rf, df_canberra_test_pred_lr,
+          df_canberra_test_pred_knn, df_canberra_test_pred_svm)
+
+plot_roc_curve(df_adelaide_test_class, df_adelaide_test_pred_rf, df_adelaide_test_pred_lr,
+               df_adelaide_test_pred_knn, df_adelaide_test_pred_svm)
+print_auc('Adelaide', df_adelaide_test_class, df_adelaide_test_pred_rf, df_adelaide_test_pred_lr,
+          df_adelaide_test_pred_knn, df_adelaide_test_pred_svm)
+
+plot_roc_curve(df_brisbane_test_class, df_brisbane_test_pred_rf, df_brisbane_test_pred_lr,
+               df_brisbane_test_pred_knn, df_brisbane_test_pred_svm)
+print_auc('Brisbane', df_brisbane_test_class, df_brisbane_test_pred_rf, df_brisbane_test_pred_lr,
+          df_brisbane_test_pred_knn, df_brisbane_test_pred_svm)
